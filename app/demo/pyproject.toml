@@ -1,0 +1,21 @@
+[project]
+name = "langgraph-expirementations"
+version = "0.1.0"
+description = "demo aiko"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain-community>=0.3.24",
+    "langchain-core>=0.3.64",
+    "langchain-openai>=0.3.21",
+    "langgraph>=0.4.8",
+    "langgraph-checkpoint-sqlite>=2.0.10",
+    "langgraph-cli[inmem]>=0.2.12",
+    "langgraph-prebuilt>=0.2.2",
+    "langgraph-sdk>=0.1.70",
+    "langsmith>=0.3.45",
+    "notebook>=7.4.3",
+    "tavily-python>=0.7.5",
+    "trustcall>=0.0.39",
+    "wikipedia>=1.4.0",
+]

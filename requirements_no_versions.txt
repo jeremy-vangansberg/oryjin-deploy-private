@@ -2,3 +2,7 @@ langchain
 langgraph
 langchain-core
 langchain-mistralai
+python-dotenv
+snowflake-connector-python[pandas]
+pandas
+trustcall

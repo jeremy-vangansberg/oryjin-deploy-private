@@ -135,13 +135,26 @@ def collect_campaign_objectives(state: MyState):
 def collect_data(state: MyState):
     cursor = get_cursor()
     data = get_table(table_name="DEMO_SEG_CLIENT")
-    print(type(data))
-    return {
-        "data": data
+    data_preview = f"""📊 Données client collectées avec succès !
+🔍 Aperçu des premières lignes :
+{data.head(5).to_string(max_cols=10, max_colwidth=20)}
+"""
+    return {    
+        "data": data,
+        "messages": state["messages"] + [AIMessage(content=data_preview)]
     }
 
 def enrich_data(state: MyState):
-    pass
+    cursor = get_cursor()
+    data = get_table(table_name="DEMO_SEG_CLIENT_ENRICHI")
+    data_preview = f"""📊 Données client collectées avec succès !
+    🔍 Aperçu des premières lignes :
+    {data.head(5).to_string(max_cols=10, max_colwidth=20)}
+    """
+    return {    
+        "data": data,
+        "messages": state["messages"] + [AIMessage(content=data_preview)]
+        }
 
 def perform_clustering(state: MyState):
     pass
@@ -162,7 +175,7 @@ def summarize_dsp_mappings(state: MyState):
 dsp = StateGraph(MyState)
 dsp.add_node("collect_campaign_objectives", collect_campaign_objectives)
 dsp.add_node("collect_data", collect_data)
-# dsp.add_node("enrich data", enrich_data)
+dsp.add_node("enrich data", enrich_data)  
 # dsp.add_node("perform clustering", perform_clustering)
 # dsp.add_node("generate textual personas", generate_textual_personas)
 # dsp.add_node("select customer segment", select_customer_segment)
@@ -172,7 +185,7 @@ dsp.add_node("collect_data", collect_data)
 
 dsp.add_edge(START, "collect_campaign_objectives")
 dsp.add_edge("collect_campaign_objectives", "collect_data")
-# dsp.add_edge("collect data", "enrich data")
+dsp.add_edge("collect_data", "enrich data")
 # dsp.add_edge("enrich data", "perform clustering")
 # dsp.add_edge("perform clustering", "generate textual personas")
 # dsp.add_edge("generate textual personas", "select customer segment")
@@ -180,7 +193,7 @@ dsp.add_edge("collect_campaign_objectives", "collect_data")
 # dsp.add_edge("generate visual personas", "mapping suggestions")
 
 
-dsp.add_edge("collect_data", END)
+dsp.add_edge("enrich data", END)
 
 graph = dsp.compile()
 # View

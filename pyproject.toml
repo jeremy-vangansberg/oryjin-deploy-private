@@ -4,4 +4,15 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12, <3.13"
-dependencies = []
+dependencies = [
+    "langchain>=0.3.25",
+    "langchain-core>=0.3.65",
+    "langchain-mistralai>=0.2.10",
+    "langgraph>=0.4.8",
+    "python-dotenv>=1.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+]

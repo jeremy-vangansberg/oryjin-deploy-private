@@ -6,3 +6,4 @@ python-dotenv
 snowflake-connector-python[pandas]
 pandas
 trustcall
+scikit-learn

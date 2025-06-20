@@ -1,7 +1,7 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-      "dsp_assistant": "./main.py:graph"
+      "dsp_assistant": "./agent/main.py:graph"
     },
     "env": "./.env",
     "python_version": "3.12",

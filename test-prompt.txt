@@ -1,0 +1,11 @@
+# --- PROMPT ORIGINAL (Acquisition / Display) ---
+Je suis le directeur marketing d'une enseigne de distribution, équipement de la maison, grand public, je vends sur le web et en magasin. On est haut de gamme. Ma clientèle est CSP+. Je veux faire une campagne de recrutement de nouveaux clients sur un produit moyen gamme de façon à recruter autant sur les CSP que les CSP+. Je souhaite définir les paramètres pour ma campagne display sur Pmax de google.
+
+# --- ALTERNATIVE 4 (B2B / Notoriété / LinkedIn) ---
+Je suis responsable marketing pour une startup qui développe un logiciel SaaS. Notre solution aide les PME du secteur du bâtiment à gérer leurs chantiers plus efficacement. Nous voulons lancer une campagne pour faire connaître notre produit auprès des dirigeants de ces entreprises. Nous pensons que LinkedIn est le meilleur canal pour une campagne de notoriété.
+
+# --- ALTERNATIVE 5 (Écologique / Vente / Social) ---
+Nous lançons une nouvelle marque de produits d'entretien 100% écologiques et rechargeables, vendus exclusivement sur notre site e-commerce. Notre cible principale, ce sont les familles urbaines qui cherchent à réduire leurs déchets. L'objectif est de générer des ventes rapidement. Nous prévoyons une campagne sur les réseaux sociaux, notamment Instagram et Facebook.
+
+# --- ALTERNATIVE 6 (Service / Acquisition / YouTube) ---
+Je suis un coach sportif indépendant et je lance une nouvelle formule de coaching en ligne avec suivi personnalisé par vidéo. Je veux acquérir mes 50 premiers clients. Ma cible, ce sont les jeunes actifs (25-35 ans) qui veulent se remettre en forme mais manquent de temps. Je pense que des tutoriels et des publicités sur YouTube seraient le plus efficace.

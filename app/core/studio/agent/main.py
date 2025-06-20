@@ -1,26 +1,42 @@
+"""
+Main entry point for the Oryjin marketing campaign assistant agent.
+
+This script defines a multi-step conversational agent using LangGraph. The agent guides the user
+through defining a marketing campaign, from setting objectives to generating visual personas
+for targeted customer segments.
+
+The agent's flow is structured as a state machine, where each step (node) performs a specific
+task, such as collecting data, running clustering, or interacting with an LLM to generate content.
+"""
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 import pandas as pd
 from dotenv import load_dotenv
-from image import generate_and_upload_image
+from agent.image import generate_and_upload_image
 from IPython.display import Image, display
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import interrupt
-from prompts import objectives_instructions, viz_persona, clustering_instructions
+from agent.prompts import objectives_instructions, viz_persona, clustering_instructions
 from pydantic import BaseModel, Field
 from trustcall import create_extractor
-from utils import get_table
-from clustering import perform_kmeans
+from agent.utils import get_table
+from agent.clustering import perform_kmeans
 
 load_dotenv()
 
+# --- Constants and Global Configurations ---
+
+# Defines the number of customer segments to generate.
 N_CLUSTERS = 4  
 
+# Initialize the language model for all generative tasks.
 llm = ChatMistralAI(model="mistral-medium-latest", temperature=0)
  
+
+# --- Pydantic Models for State Management and Data Validation ---
 
 
 class Objective(str, Enum):
@@ -44,15 +60,15 @@ class Context(BaseModel):
     
     end_target: str = Field(
         description="Cible démographique de la campagne",
-        examples=["CSP+", "CSP+ et CSP (élargissement)", "jeunes 18-25 ans"]
+        # examples=["CSP+", "CSP+ et CSP (élargissement)", "jeunes 18-25 ans"]
     )
     business_context: str = Field(
         description="Contexte commercial de l'entreprise",
-        examples=["Distribution équipement maison, haut de gamme, vente web + magasin"]
+        # examples=["Distribution équipement maison, haut de gamme, vente web + magasin"]
     )
     product_context: str = Field(
         description="Contexte du produit ou service",
-        examples=["Produit moyen gamme (nouveau)", "Équipement maison haut de gamme"]
+        # examples=["Produit moyen gamme (nouveau)", "Équipement maison haut de gamme"]
     )
 
 class CampaignObjectives(BaseModel):
@@ -121,13 +137,9 @@ class MyState(MessagesState):
     data_enriched : pd.DataFrame = None
     personas : Personas = None
     id_choice_segment : int = None
-    # statistics_clusters : pd.DataFrame = None
-    # stats_personas : Personas = None
     stats_persona_summary : str = None # summary of personas stats
-    # textual_personas : TextualPersonas # textual summary of personas     
-    # personas_stats_summary : str = None # summary of personas stats
-
-
+    image_url : str = None
+    final_summary : str = None
 
 def collect_campaign_objectives(state: MyState):
     message = state["messages"][0]
@@ -351,7 +363,15 @@ def generate_visual_persona(state: MyState):
     image_url = generate_and_upload_image(visual_persona_prompt, "images-oryjin", "config_gcloud.json", folder="personas")
 
     return {
-        "messages": state["messages"] + [AIMessage(content=f"prompt utilisée : {visual_persona_prompt}\nImage générée pour le persona {image_url}")]
+        "image_url": image_url,
+        "messages": state["messages"] + [AIMessage(content=
+        f"""prompt utilisée : {visual_persona_prompt}\n
+        ---\n
+        Persona description :
+        {persona_description}
+        ---\n
+        Image générée pour le persona {image_url}"""
+        )]
     }
 
 

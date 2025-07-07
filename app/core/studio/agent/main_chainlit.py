@@ -9,18 +9,19 @@ The agent's flow is structured as a state machine, where each step (node) perfor
 task, such as collecting data, running clustering, or interacting with an LLM to generate content.
 """
 from dotenv import load_dotenv
-from agent.image import generate_and_upload_image
+from image import generate_and_upload_image
 from IPython.display import Image, display
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from agent.prompts import objectives_instructions, viz_persona, clustering_instructions
+from prompts import objectives_instructions, viz_persona, clustering_instructions
 
 from trustcall import create_extractor
-from agent.utils import get_table
-from agent.clustering import perform_kmeans
-from agent.models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
+from utils import get_table
+from clustering import perform_kmeans
+from models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
 
 
 # --- Constants and Global Configurations ---

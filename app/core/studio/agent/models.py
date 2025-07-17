@@ -25,19 +25,9 @@ class Media(str, Enum):
 
 class Context(BaseModel):
     """Contexte détaillé d'une campagne marketing incluant cible, business et produit."""
-    
-    end_target: str = Field(
-        description="Cible démographique de la campagne",
-        # examples=["CSP+", "CSP+ et CSP (élargissement)", "jeunes 18-25 ans"]
-    )
-    business_context: str = Field(
-        description="Contexte commercial de l'entreprise",
-        # examples=["Distribution équipement maison, haut de gamme, vente web + magasin"]
-    )
-    product_context: str = Field(
-        description="Contexte du produit ou service",
-        # examples=["Produit moyen gamme (nouveau)", "Équipement maison haut de gamme"]
-    )
+    end_target: Optional[str] = Field(default=None, description="Cible démographique de la campagne")
+    business_context: Optional[str] = Field(default=None, description="Contexte commercial de l'entreprise")
+    product_context: Optional[str] = Field(default=None, description="Contexte du produit ou service")
 
 class CampaignObjectives(BaseModel):
     """
@@ -47,14 +37,9 @@ class CampaignObjectives(BaseModel):
     pour définir une stratégie de campagne marketing digital efficace.
     """
     
-    objectives: Objective = Field(
-        description="Objectif principal de la campagne marketing"
-    )
-    media: Media = Field(
-        description="Canal digital principal utilisé pour la campagne"
-    ) 
-    context: Context = Field(
-        description="Contexte complet de la campagne incluant cible, business et produit")
+    objectives: Optional[Objective] = Field(default=None, description="Objectif principal de la campagne marketing")
+    media: Optional[Media] = Field(default=None, description="Canal digital principal utilisé pour la campagne")
+    context: Optional[Context] = Field(default=None, description="Contexte complet de la campagne incluant cible, business et produit")
     
 
 class Persona(BaseModel):
@@ -108,3 +93,5 @@ class MyState(MessagesState):
     stats_persona_summary : str = None # summary of personas stats
     image_url : str = None
     final_summary : str = None
+    user_feedback : str = None # feedback utilisateur pour clarification
+    valid : bool = None # validation des objectifs

@@ -3,8 +3,10 @@ name = "oryjin-poc"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.12"
 dependencies = [
+    "azure-storage-blob>=12.26.0",
+    "chainlit>=2.6.2",
     "google-cloud-storage>=3.1.1",
     "langchain>=0.3.25",
     "langchain-core>=0.3.65",

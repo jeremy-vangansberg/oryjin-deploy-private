@@ -203,7 +203,7 @@ def select_customer_segment(state: MyState):
     print("Waiting for user input...")
     id_segment = interrupt(value="Ready for user input.")
 
-    id_segment = int(id_segment)
+    id_segment = int(list(id_segment.values())[0])
 
     # This check is important for when the graph resumes
     if id_segment is None:

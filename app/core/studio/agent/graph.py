@@ -9,19 +9,18 @@ The agent's flow is structured as a state machine, where each step (node) perfor
 task, such as collecting data, running clustering, or interacting with an LLM to generate content.
 """
 from dotenv import load_dotenv
-from image import generate_and_upload_image
+from agent.image import generate_and_upload_image
 from IPython.display import Image, display
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from prompts import objectives_instructions, viz_persona, clustering_instructions
+from agent.prompts import objectives_instructions, viz_persona, clustering_instructions
 
 from trustcall import create_extractor
-from utils import get_table
-from clustering import perform_kmeans
-from models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
+from agent.utils import get_table
+from agent.clustering import perform_kmeans
+from agent.models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
 
 
 # --- Constants and Global Configurations ---
@@ -283,20 +282,3 @@ graph = dsp.compile()
 # View
 display(Image(graph.get_graph().draw_mermaid_png()))
 
-import chainlit as cl
-
-@cl.on_message
-async def on_message(msg: cl.Message):
-    config = {"configurable": {"thread_id": cl.context.session.id}}
-    cb = cl.LangchainCallbackHandler()
-    final_answer = cl.Message(content="")
-    
-    for msg, metadata in graph.stream({"messages": [HumanMessage(content=msg.content)]}, stream_mode="messages", config=RunnableConfig(callbacks=[cb], **config)):
-        if (
-            msg.content
-            and not isinstance(msg, HumanMessage)
-            and metadata["langgraph_node"] == "final"
-        ):
-            await final_answer.stream_token(msg.content)
-
-    await final_answer.send()

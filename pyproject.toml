@@ -5,17 +5,23 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12, <3.13"
 dependencies = [
+    "chainlit>=2.6.0",
     "google-cloud-storage>=3.1.1",
+    "ipython>=9.3.0",
     "langchain>=0.3.25",
+    "langchain-community>=0.3.25",
     "langchain-core>=0.3.65",
     "langchain-mistralai>=0.2.10",
+    "langchain-openai>=0.3.10",
     "langgraph>=0.4.8",
     "openai>=1.88.0",
     "pandas>=2.3.0",
     "python-dotenv>=1.1.0",
     "scikit-learn>=1.7.0",
     "snowflake-connector-python[pandas]>=3.15.0",
+    "tavily-python>=0.4.0",
     "trustcall>=0.0.39",
+    "wikipedia>=1.4.0",
 ]
 
 [dependency-groups]

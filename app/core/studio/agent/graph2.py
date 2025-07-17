@@ -9,18 +9,19 @@ The agent's flow is structured as a state machine, where each step (node) perfor
 task, such as collecting data, running clustering, or interacting with an LLM to generate content.
 """
 from dotenv import load_dotenv
-from agent.image import generate_and_upload_image
+from image import generate_and_upload_image
 from IPython.display import Image, display
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from agent.prompts import objectives_instructions, viz_persona, clustering_instructions
+from langgraph.checkpoint.memory import MemorySaver
+from prompts import objectives_instructions, viz_persona, clustering_instructions
 
 from trustcall import create_extractor
-from agent.utils import get_table
-from agent.clustering import perform_kmeans
-from agent.models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
+from utils import get_table
+from clustering import perform_kmeans
+from models import CampaignObjectives, Personas, PersonasUpdate, Persona, MyState 
 
 
 # --- Constants and Global Configurations ---
@@ -31,9 +32,15 @@ N_CLUSTERS = 4
 # Initialize the language model for all generative tasks.
 llm = ChatMistralAI(model="mistral-medium-latest", temperature=0)
 
+# LLM sans callbacks pour les appels trustcall (évite les conflits avec Chainlit)
+llm_no_callbacks = ChatMistralAI(model="mistral-medium-latest", temperature=0)
+
+# Variable globale pour stocker l'input utilisateur
+user_segment_input = None
+
 def collect_campaign_objectives(state: MyState):
     message = state["messages"][0]
-    structured_llm = create_extractor(llm, tools=[CampaignObjectives], tool_choice="CampaignObjectives")
+    structured_llm = create_extractor(llm_no_callbacks, tools=[CampaignObjectives], tool_choice="CampaignObjectives")
     # structured_llm = llm.with_structured_output(CampaignObjectives)
     campaign_objectives =structured_llm.invoke([
         SystemMessage(content=objectives_instructions),
@@ -91,7 +98,7 @@ def perform_clustering(state: MyState):
     data = state["data_enriched"]
     statistics_clusters_preview = perform_kmeans(data)
 
-    structured_llm = create_extractor(llm, tools=[Personas], tool_choice="Personas")
+    structured_llm = create_extractor(llm_no_callbacks, tools=[Personas], tool_choice="Personas")
 
     prompt_unifie = f"""
 {clustering_instructions}
@@ -164,7 +171,7 @@ def generate_textual_personas(state: MyState):
     """
 
     # 2. Définir un extracteur avec un schéma de sortie simple et précis
-    structured_llm = create_extractor(llm, tools=[PersonasUpdate], tool_choice="PersonasUpdate")
+    structured_llm = create_extractor(llm_no_callbacks, tools=[PersonasUpdate], tool_choice="PersonasUpdate")
     
     response = structured_llm.invoke([
         SystemMessage(content=prompt_content),
@@ -200,27 +207,36 @@ def select_customer_segment(state: MyState):
     Reads the user's segment choice from the state after the graph resumes,
     and returns a confirmation message to be added to the chat.
     """
+    global user_segment_input
+    
     print("Waiting for user input...")
-    id_segment = interrupt(value="Ready for user input.")
-
-    id_segment = int(id_segment)
-
-    # This check is important for when the graph resumes
+    
+    # Avec interrupt_before, cette fonction est appelée après que l'utilisateur ait fourni l'input
+    # L'input est stocké dans la variable globale user_segment_input
+    
+    id_segment = user_segment_input
+    
     if id_segment is None:
-        # This can happen if the UI doesn't correctly update the state.
-        # We add an error message to the chat to make it visible.
         return {"messages": state["messages"] + [AIMessage(content="Erreur: Aucun segment n'a été sélectionné. Le processus ne peut pas continuer.")]}
+
+    try:
+        id_segment = int(id_segment)
+    except (ValueError, TypeError):
+        return {"messages": state["messages"] + [AIMessage(content=f"Erreur: '{id_segment}' n'est pas un numéro valide.")]}
 
     personas = state["personas"]
     # Ensure the selected ID is valid
     if id_segment >= len(personas.personas):
-        return {"messages": state["messages"] + [AIMessage(content=f"Erreur: L'ID de segment {id_segment} est invalide.")]}
+        return {"messages": state["messages"] + [AIMessage(content=f"Erreur: L'ID de segment {id_segment} est invalide. Veuillez choisir un segment entre 0 et {len(personas.personas)-1}.")]}
         
     persona = personas.personas[id_segment]
     
     print(f"Segment choisi par l'utilisateur : {persona.cluster}")
     
-    confirmation_message = f"Vous avez choisi le segment {persona.cluster}. Le processus continue..."
+    confirmation_message = f"✅ Vous avez choisi le segment {persona.cluster}. Le processus continue..."
+    
+    # Réinitialiser l'input pour la prochaine utilisation
+    user_segment_input = None
     
     # Return a dictionary to update the state. This is the correct way to proceed.
     return {
@@ -277,25 +293,11 @@ dsp.add_edge("generate textual personas", "select customer segment")
 dsp.add_edge("select customer segment", "generate visual persona")
 dsp.add_edge("generate visual persona", END)
 
-# graph = dsp.compile(interrupt_before=["select customer segment"])
-graph = dsp.compile()
+# Créer un checkpointer pour permettre les interruptions
+checkpointer = MemorySaver()
+
+graph = dsp.compile(interrupt_before=["select customer segment"], checkpointer=checkpointer)
+# graph = dsp.compile()
 # View
 display(Image(graph.get_graph().draw_mermaid_png()))
 
-import chainlit as cl
-
-@cl.on_message
-async def on_message(msg: cl.Message):
-    config = {"configurable": {"thread_id": cl.context.session.id}}
-    cb = cl.LangchainCallbackHandler()
-    final_answer = cl.Message(content="")
-    
-    for msg, metadata in graph.stream({"messages": [HumanMessage(content=msg.content)]}, stream_mode="messages", config=RunnableConfig(callbacks=[cb], **config)):
-        if (
-            msg.content
-            and not isinstance(msg, HumanMessage)
-            and metadata["langgraph_node"] == "final"
-        ):
-            await final_answer.stream_token(msg.content)
-
-    await final_answer.send()

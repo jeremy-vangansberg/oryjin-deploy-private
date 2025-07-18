@@ -25,8 +25,7 @@ from agent.models import CampaignObjectives, Personas, PersonasUpdate, Persona, 
 
 # --- Constants and Global Configurations ---
 load_dotenv()
-# Defines the number of customer segments to generate.
-N_CLUSTERS = 4  
+
 
 # Initialize the language model for all generative tasks.
 llm = ChatMistralAI(model="mistral-medium-latest", temperature=0)
@@ -35,7 +34,7 @@ def collect_campaign_objectives(state: MyState):
     message = state["messages"][0]
     structured_llm = create_extractor(llm, tools=[CampaignObjectives], tool_choice="CampaignObjectives")
     # structured_llm = llm.with_structured_output(CampaignObjectives)
-    campaign_objectives =structured_llm.invoke([
+    campaign_objectives = structured_llm.invoke([
         SystemMessage(content=objectives_instructions),
         message
         ])

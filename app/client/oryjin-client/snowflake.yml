@@ -1,0 +1,16 @@
+definition_version: 2
+entities:
+   oryjin_package:
+      type: application package
+      stage: stage_content.oryjin_package
+      manifest: app/manifest.yml
+      identifier: oryjin_package
+      artifacts:
+         - src: app/*
+           dest: ./
+         - src: streamlit/*
+   oryjin_client_app:
+      type: application
+      from:
+         target: oryjin_package
+      debug: false

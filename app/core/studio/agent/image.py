@@ -3,7 +3,6 @@ import base64
 import uuid
 from openai import OpenAI
 from dotenv import load_dotenv
-from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 from datetime import datetime, timedelta
 
 # Import optionnels selon le backend utilisé
@@ -12,10 +11,12 @@ try:
 except ImportError:
     storage = None
 try:
-    from azure.storage.blob import BlobServiceClient, ContentSettings
+    from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
 except ImportError:
     BlobServiceClient = None
     ContentSettings = None
+    generate_blob_sas = None
+    BlobSasPermissions = None
 
 # Charger les variables d'environnement (ex: OPENAI_API_KEY)
 load_dotenv()
@@ -84,16 +85,21 @@ class AzureBlobUploader(StorageUploader):
                 overwrite=True,
                 content_settings=ContentSettings(content_type='image/png')
             )
-            # Générer un SAS token valable 1h
-            sas_token = generate_blob_sas(
-                account_name=self.service_client.account_name,
-                container_name=self.container_name,
-                blob_name=destination_blob_name,
-                account_key=self.service_client.credential.account_key,
-                permission=BlobSasPermissions(read=True),
-                expiry=datetime.utcnow() + timedelta(hours=1)
-            )
-            public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}?{sas_token}"
+            # Générer un SAS token valable 1h (si disponible)
+            if generate_blob_sas is not None and BlobSasPermissions is not None:
+                sas_token = generate_blob_sas(
+                    account_name=self.service_client.account_name,
+                    container_name=self.container_name,
+                    blob_name=destination_blob_name,
+                    account_key=self.service_client.credential.account_key,
+                    permission=BlobSasPermissions(read=True),
+                    expiry=datetime.utcnow() + timedelta(hours=1)
+                )
+                public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}?{sas_token}"
+            else:
+                # URL sans SAS token (accès public requis)
+                public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}"
+                print("Attention: SAS token non disponible, utilisation d'une URL publique")
             print("Upload réussi !")
             return public_url
         except Exception as e:

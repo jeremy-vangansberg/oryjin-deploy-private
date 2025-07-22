@@ -1,4 +1,4 @@
-google-cloud-storage>=3.1.1
+azure-storage-blob>=12.17.0
 langchain>=0.3.25
 langchain-core>=0.3.65
 langchain-mistralai>=0.2.10

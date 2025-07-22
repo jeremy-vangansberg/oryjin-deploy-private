@@ -42,11 +42,16 @@ def collect_campaign_objectives(state: MyState):
     message = state["messages"][0]
     structured_llm = create_extractor(llm_no_callbacks, tools=[CampaignObjectives], tool_choice="CampaignObjectives")
     # structured_llm = llm.with_structured_output(CampaignObjectives)
-    campaign_objectives =structured_llm.invoke([
+    campaign_objectives_response = structured_llm.invoke([
         SystemMessage(content=objectives_instructions),
         message
         ])
-    campaign_objectives = CampaignObjectives(**campaign_objectives['responses'][0].model_dump())
+        
+    # Gestion d'erreur pour éviter IndexError
+    if not campaign_objectives_response.get('responses') or len(campaign_objectives_response['responses']) == 0:
+        raise ValueError(f"Aucune réponse reçue du LLM pour les objectifs de campagne. Response: {campaign_objectives_response}")
+        
+    campaign_objectives = CampaignObjectives(**campaign_objectives_response['responses'][0].model_dump())
 
     print(campaign_objectives)
 
@@ -110,6 +115,11 @@ Voici les données JSON à traiter :
 """
 
     response = structured_llm.invoke([SystemMessage(content=prompt_unifie)])
+    
+    # Gestion d'erreur pour éviter IndexError
+    if not response.get('responses') or len(response['responses']) == 0:
+        raise ValueError(f"Aucune réponse reçue du LLM pour le clustering. Response: {response}")
+    
     personas_data = response['responses'][0].model_dump()['personas']
     personas = Personas(personas=[Persona(**p) for p in personas_data])
 
@@ -178,6 +188,9 @@ def generate_textual_personas(state: MyState):
     ])
     
     # 3. Valider la sortie du LLM
+    if not response.get('responses') or len(response['responses']) == 0:
+        raise ValueError(f"Aucune réponse reçue du LLM pour la génération des personas. Response: {response}")
+        
     updates = PersonasUpdate(**response['responses'][0].model_dump())
     descriptions_map = {update.cluster: update.description_general for update in updates.personas}
 

@@ -4,10 +4,13 @@ import json
 from typing import Dict, Any, Optional
 import sseclient
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 LANGGRAPH_API_URL = "https://ht-nautical-decoration-70-7d3b580d2cc25c4fb59221f2145e155e.us.langgraph.app"
-API_KEY = "***REMOVED***"
-ASSISTANT_ID = "fe096781-5601-53d2-b2f6-0d3403f7e9ca"
+API_KEY = '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'
+ASSISTANT_ID = "a46dc375-f340-533e-9fe2-61f90b126e72"
 
 HEADERS = {
     "Content-Type": "application/json",

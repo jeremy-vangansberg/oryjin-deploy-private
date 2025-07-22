@@ -29,3 +29,8 @@ dev = [
     "ipykernel>=6.29.5",
     "langgraph-cli[inmem]>=0.3.3",
 ]
+
+[tool.uv.workspace]
+members = [
+    "app/client/oryjin-client",
+]

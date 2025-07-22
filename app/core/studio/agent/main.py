@@ -11,12 +11,13 @@ task, such as collecting data, running clustering, or interacting with an LLM to
 from dotenv import load_dotenv
 from agent.image import generate_and_upload_image
 from IPython.display import Image, display
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
-from agent.prompts import objectives_instructions, viz_persona, clustering_instructions
-
+from agent.prompts import objectives_instructions, viz_persona, clustering_instructions, clarification_loop
+from agent.prompts import get_missing_fields
 from trustcall import create_extractor
 from agent.utils import get_table
 from agent.clustering import perform_kmeans
@@ -30,35 +31,150 @@ load_dotenv()
 # Initialize the language model for all generative tasks.
 llm = ChatMistralAI(model="mistral-medium-latest", temperature=0)
 
+def extract_text_from_content(content):
+    """Extrait le texte d'un contenu de message, qu'il soit string ou liste"""
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict) and 'text' in item:
+                text_parts.append(item['text'])
+            elif isinstance(item, str):
+                text_parts.append(item)
+        return ' '.join(text_parts)
+    else:
+        return str(content)
+
 def collect_campaign_objectives(state: MyState):
-    message = state["messages"][0]
-    structured_llm = create_extractor(llm, tools=[CampaignObjectives], tool_choice="CampaignObjectives")
-    # structured_llm = llm.with_structured_output(CampaignObjectives)
-    campaign_objectives = structured_llm.invoke([
-        SystemMessage(content=objectives_instructions),
-        message
-        ])
-    campaign_objectives = CampaignObjectives(**campaign_objectives['responses'][0].model_dump())
-
-    print(campaign_objectives)
-
-    objectives_summary = f"""
-    ✅ Objectifs de campagne collectés :
-
-    Objectif : {campaign_objectives.objectives}
-    Média : {campaign_objectives.media}
-    Contexte :
-    - Cible : {campaign_objectives.context.end_target}
-    - Business : {campaign_objectives.context.business_context}
-    - Produit : {campaign_objectives.context.product_context}
-    """
-
+    # Utiliser TOUS les messages pour l'extraction pour que TrustCall puisse faire les updates
+    messages = state["messages"]
+    
+    # Créer l'extractor avec enable_inserts=True pour les updates
+    structured_llm = create_extractor(
+        llm, 
+        tools=[CampaignObjectives], 
+        tool_choice="CampaignObjectives",
+        enable_inserts=True
+    )
+    
+    # Debug: afficher tous les messages d'entrée
+    print(f"DEBUG - Nombre de messages: {len(messages)}")
+    for i, msg in enumerate(messages):
+        print(f"DEBUG - Message {i}: {msg.content}")
+    
+    # Préparer les données existantes si on en a
+    existing_data = []
+    if state.get("objectives"):
+        existing_objectives = state["objectives"]
+        existing_data = [("0", "CampaignObjectives", existing_objectives.model_dump())]
+        print(f"DEBUG - Existing data: {existing_data}")
+    
+    # Construire le message de conversation en extrayant proprement le texte
+    conversation_parts = []
+    for msg in messages:
+        if hasattr(msg, 'content'):
+            text = extract_text_from_content(msg.content)
+            conversation_parts.append(text)
+    
+    conversation = "\n".join(conversation_parts)
+    print(f"DEBUG - Conversation: {conversation}")
+    
+    # Invoquer avec les données existantes
+    result = structured_llm.invoke({
+        "messages": [
+            SystemMessage(content=objectives_instructions),
+            HumanMessage(content=f"Extrais et mets à jour les objectifs de campagne basés sur cette conversation:\n\n{conversation}")
+        ],
+        "existing": existing_data
+    })
+    
+    campaign_objectives = CampaignObjectives(**result['responses'][0].model_dump())
+    
+    # Debug: afficher le résultat de l'extraction
+    print(f"DEBUG - Extraction result: {campaign_objectives}")
+    
     return {
         "objectives": campaign_objectives,
-        "messages": state["messages"] + [AIMessage(content=objectives_summary)]
+        "messages": state["messages"]
     }
 
+def validate_campaign_objectives(state: MyState):
+    from agent.prompts import get_missing_fields
+    objectives = state["objectives"]
+    missing = get_missing_fields(objectives)
+    
+    # Debug: afficher les objectifs et les champs manquants
+    print(f"DEBUG - Objectives: {objectives}")
+    print(f"DEBUG - Missing fields: {missing}")
+    
+    if missing:
+        objectives_summary = f"""
+        ✅ Objectifs de campagne extraits (partiels) :
+
+        Objectif : {objectives.objectives}
+        Média : {objectives.media}
+        Contexte :
+        - Cible : {objectives.context.end_target if objectives.context else None}
+        - Business : {objectives.context.business_context if objectives.context else None}
+        - Produit : {objectives.context.product_context if objectives.context else None}
+        """
+        clarification = f"Merci de préciser les informations suivantes : {', '.join(missing)}"
+        ai_message = AIMessage(content=objectives_summary + '\n' + clarification)
+        return {"valid": False, **state, "messages": state["messages"] + [ai_message]}
+    else:
+        objectives_summary = f"""
+        ✅ Objectifs de campagne collectés :
+
+        Objectif : {objectives.objectives}
+        Média : {objectives.media}
+        Contexte :
+        - Cible : {objectives.context.end_target if objectives.context else None}
+        - Business : {objectives.context.business_context if objectives.context else None}
+        - Produit : {objectives.context.product_context if objectives.context else None}
+        """
+        ai_message = AIMessage(content=objectives_summary)
+        return {"valid": True, **state, "messages": state["messages"] + [ai_message]}
+
+def human_feedback(state: MyState):
+    """ No-op node that should be interrupted on """
+    # Créer un champ de saisie utilisateur dans LangSmith Studio
+    user_input = interrupt("Veuillez fournir les informations manquantes pour compléter vos objectifs de campagne :")
+    
+    # Gérer le cas où interrupt() retourne un dictionnaire
+    if isinstance(user_input, dict):
+        # Extraire la première valeur du dictionnaire
+        user_input = list(user_input.values())[0] if user_input else ""
+    
+    return {"user_feedback": user_input}
+
+def process_user_feedback(state: MyState):
+    """ Process user feedback and add it to messages """
+    user_feedback = state.get("user_feedback")
+    if user_feedback:
+        # Ajouter le feedback utilisateur aux messages
+        new_message = HumanMessage(content=user_feedback)
+        return {"messages": state["messages"] + [new_message]}
+    return state
+
+def continue_or_clarify(state: MyState):
+    """ Conditional edge to continue data collection or return to collect_campaign_objectives """
+    
+    # Check if user typed "ok" to force exit
+    user_feedback = state.get("user_feedback", "")
+    if user_feedback and user_feedback.lower().strip() == "ok":
+        print("DEBUG - User typed 'ok', forcing exit from clarification loop")
+        return "collect data"
+    
+    # Check if objectives are valid
+    if state.get("valid", False):
+        return "collect data"
+    else:
+        # Return to process user feedback first
+        return "process user feedback"
+
 def collect_data(state: MyState):
+    # debug = interrupt(value="stop")
     data = get_table(table_name="DEMO_SEG_CLIENT")
     # data_preview = f"""📊 Données client collectées avec succès !
     # 🔍 Aperçu des premières lignes :
@@ -100,10 +216,6 @@ Voici les données JSON à traiter :
 {statistics_clusters_preview}
 ```
 """
-
-    response = structured_llm.invoke([SystemMessage(content=prompt_unifie)])
-    personas_data = response['responses'][0].model_dump()['personas']
-    personas = Personas(personas=[Persona(**p) for p in personas_data])
 
     clusters_formatted = '\n'.join([
     f"""
@@ -237,7 +349,14 @@ def generate_visual_persona(state: MyState):
 
     # La réponse de llm.invoke est un objet AIMessage, on accède à son contenu avec .content
     visual_persona_prompt = response.content
-    image_url = generate_and_upload_image(visual_persona_prompt, "images-oryjin", "config_gcloud.json", folder="personas")
+    
+    # Créer l'uploader Azure (vous pouvez changer pour GCS si nécessaire)
+    from agent.image import AzureBlobUploader
+    AZURE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=oryjindemo;***REMOVED***;EndpointSuffix=core.windows.net"
+    AZURE_CONTAINER_NAME = "images"
+    
+    uploader = AzureBlobUploader(AZURE_CONNECTION_STRING, AZURE_CONTAINER_NAME)
+    image_url = generate_and_upload_image(visual_persona_prompt, uploader, folder="personas")
 
     return {
         "image_url": image_url,
@@ -258,6 +377,9 @@ def summarize_dsp_mappings(state: MyState):
 
 dsp = StateGraph(MyState)
 dsp.add_node("collect campaign objectives", collect_campaign_objectives)
+dsp.add_node("validate campaign objectives", validate_campaign_objectives)
+dsp.add_node("human_feedback", human_feedback)
+dsp.add_node("process user feedback", process_user_feedback)
 dsp.add_node("collect data", collect_data)
 dsp.add_node("enrich data", enrich_data)  
 dsp.add_node("perform clustering", perform_clustering)
@@ -266,9 +388,13 @@ dsp.add_node("select customer segment", select_customer_segment)
 dsp.add_node("generate visual persona", generate_visual_persona)
 # dsp.add_node("mapping suggestions", summarize_dsp_mappings)
 
+# Edges
 
 dsp.add_edge(START, "collect campaign objectives")
-dsp.add_edge("collect campaign objectives", "collect data")
+dsp.add_edge("collect campaign objectives", "validate campaign objectives")
+dsp.add_edge("validate campaign objectives", "human_feedback")
+dsp.add_conditional_edges("human_feedback", continue_or_clarify, ["process user feedback", "collect data"])
+dsp.add_edge("process user feedback", "collect campaign objectives")
 dsp.add_edge("collect data", "enrich data")
 dsp.add_edge("enrich data", "perform clustering")
 dsp.add_edge("perform clustering", "generate textual personas")
@@ -276,25 +402,7 @@ dsp.add_edge("generate textual personas", "select customer segment")
 dsp.add_edge("select customer segment", "generate visual persona")
 dsp.add_edge("generate visual persona", END)
 
-# graph = dsp.compile(interrupt_before=["select customer segment"])
+# Compilation sans interrupt_before - on utilise interrupt() dans le node
 graph = dsp.compile()
 # View
 display(Image(graph.get_graph().draw_mermaid_png()))
-
-import chainlit as cl
-
-@cl.on_message
-async def on_message(msg: cl.Message):
-    config = {"configurable": {"thread_id": cl.context.session.id}}
-    cb = cl.LangchainCallbackHandler()
-    final_answer = cl.Message(content="")
-    
-    for msg, metadata in graph.stream({"messages": [HumanMessage(content=msg.content)]}, stream_mode="messages", config=RunnableConfig(callbacks=[cb], **config)):
-        if (
-            msg.content
-            and not isinstance(msg, HumanMessage)
-            and metadata["langgraph_node"] == "final"
-        ):
-            await final_answer.stream_token(msg.content)
-
-    await final_answer.send()

@@ -1,111 +1,164 @@
 import os
 import base64
 import uuid
-from google.cloud import storage
 from openai import OpenAI
 from dotenv import load_dotenv
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions
+from datetime import datetime, timedelta
+
+# Import optionnels selon le backend utilisé
+try:
+    from google.cloud import storage
+except ImportError:
+    storage = None
+try:
+    from azure.storage.blob import BlobServiceClient, ContentSettings
+except ImportError:
+    BlobServiceClient = None
+    ContentSettings = None
 
 # Charger les variables d'environnement (ex: OPENAI_API_KEY)
 load_dotenv()
 
+def decode_base64_image(image_base64):
+    """Décode une image base64, gère le préfixe éventuel."""
+    if "," in image_base64:
+        _, encoded = image_base64.split(",", 1)
+    else:
+        encoded = image_base64
+    return base64.b64decode(encoded)
+
+class StorageUploader:
+    """Interface d'upload d'image."""
+    def upload(self, image_base64, destination_blob_name):
+        raise NotImplementedError
+
+class GCSUploader(StorageUploader):
+    def __init__(self, bucket_name, credentials_path):
+        if storage is None:
+            raise ImportError("google-cloud-storage n'est pas installé.")
+        self.bucket_name = bucket_name
+        self.credentials_path = credentials_path
+        self.client = storage.Client.from_service_account_json(credentials_path)
+        self.bucket = self.client.bucket(bucket_name)
+
+    def upload(self, image_base64, destination_blob_name):
+        print(f"Upload de l'image vers le bucket GCS '{self.bucket_name}'...")
+        try:
+            image_data = decode_base64_image(image_base64)
+            blob = self.bucket.blob(destination_blob_name)
+            blob.upload_from_string(image_data, content_type='image/png')
+            public_url = f"https://storage.googleapis.com/{self.bucket.name}/{blob.name}"
+            print("Upload réussi !")
+            return public_url
+        except Exception as e:
+            print(f"Erreur lors de l'upload vers GCS : {e}")
+            return None
+
+class AzureBlobUploader(StorageUploader):
+    def __init__(self, connection_string, container_name):
+        if BlobServiceClient is None:
+            raise ImportError("azure-storage-blob n'est pas installé.")
+        self.connection_string = connection_string
+        self.container_name = container_name
+        self.service_client = BlobServiceClient.from_connection_string(connection_string)
+        self.container_client = self.service_client.get_container_client(container_name)
+        # Création du conteneur s'il n'existe pas
+        try:
+            self.container_client.create_container()
+            print(f"Conteneur '{container_name}' créé sur Azure Blob.")
+        except Exception as e:
+            if 'ContainerAlreadyExists' in str(e):
+                pass  # Le conteneur existe déjà, on ne fait rien
+            else:
+                print(f"Erreur lors de la création du conteneur Azure : {e}")
+                raise
+
+    def upload(self, image_base64, destination_blob_name):
+        print(f"Upload de l'image vers le conteneur Azure Blob '{self.container_name}'...")
+        try:
+            image_data = decode_base64_image(image_base64)
+            blob_client = self.container_client.get_blob_client(destination_blob_name)
+            blob_client.upload_blob(
+                image_data,
+                overwrite=True,
+                content_settings=ContentSettings(content_type='image/png')
+            )
+            # Générer un SAS token valable 1h
+            sas_token = generate_blob_sas(
+                account_name=self.service_client.account_name,
+                container_name=self.container_name,
+                blob_name=destination_blob_name,
+                account_key=self.service_client.credential.account_key,
+                permission=BlobSasPermissions(read=True),
+                expiry=datetime.utcnow() + timedelta(hours=1)
+            )
+            public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}?{sas_token}"
+            print("Upload réussi !")
+            return public_url
+        except Exception as e:
+            print(f"Erreur lors de l'upload vers Azure Blob : {e}")
+            return None
+
 def generate_image(prompt):
-        client = OpenAI()
-        response = client.images.generate(
-            model="gpt-image-1",
-            prompt=prompt,
-            quality="high",
-            size="1024x1024"
-        )
-        return response.data[0].b64_json
+    client = OpenAI()
+    response = client.images.generate(
+        model="gpt-image-1",
+        prompt=prompt,
+        quality="low",
+        size="1024x1024"
+    )
+    return response.data[0].b64_json
 
-def upload_to_gcs_from_base64(bucket_name, image_base64, destination_blob_name,credentials_path):
-    """Uploade une image depuis une chaîne base64 vers GCS sans sauvegarde locale."""
-    print(f"Upload de l'image vers le bucket GCS '{bucket_name}'...")
-    try:
-        # 1. Initialiser le client GCS
-        storage_client = storage.Client.from_service_account_json(credentials_path)
-        bucket = storage_client.bucket(bucket_name)
-
-        # 2. Décoder la chaîne base64
-        if "," in image_base64:
-            _, encoded = image_base64.split(",", 1)
-        else:
-            encoded = image_base64
-        image_data = base64.b64decode(encoded)
-
-        # 3. Uploader les données en mémoire
-        blob = bucket.blob(destination_blob_name)
-        blob.upload_from_string(image_data, content_type='image/png')
-        
-        public_url = f"https://storage.googleapis.com/{bucket.name}/{blob.name}"
-
-        print("Upload réussi !")
-        return public_url
-    except Exception as e:
-        print(f"Erreur lors de l'upload vers GCS : {e}")
-        return None
-
-def generate_and_upload_image(prompt, bucket_name, credentials_path, folder="personas"):
+def generate_and_upload_image(prompt, uploader, folder="personas"):
     """
-    Orchestre la génération d'une image et son envoi sur GCS.
-    1. Génère une image à partir d'un prompt.
-    2. Uploade l'image sur Google Cloud Storage.
-    3. Retourne l'URL publique de l'image.
-    
+    Orchestre la génération d'une image et son envoi sur un backend de stockage.
     :param prompt: Le texte pour générer l'image.
-    :param bucket_name: Le nom du bucket GCS.
-    :param credentials_path: Le chemin vers le fichier de clé de service JSON.
-    :param folder: Le dossier de destination dans le bucket (par défaut 'personas').
+    :param uploader: Instance de StorageUploader (GCSUploader ou AzureBlobUploader).
+    :param folder: Le dossier de destination (par défaut 'personas').
     :return: L'URL publique de l'image, ou None si une erreur survient.
     """
     print("--- Début du processus de génération et d'upload ---")
-    
-    # 1. Générer l'image
     image_base64 = generate_image(prompt)
     if not image_base64:
         print("--- Fin du processus : échec de la génération d'image ---")
         return None
-
-    # 2. Définir un nom de fichier unique
     unique_filename = f"{folder}/{uuid.uuid4()}.png"
-
-    # 3. Uploader l'image
-    public_url = upload_to_gcs_from_base64(
-        bucket_name=bucket_name,
-        image_base64=image_base64,
-        destination_blob_name=unique_filename,
-        credentials_path=credentials_path
-    )
-    
+    public_url = uploader.upload(image_base64, unique_filename)
     if public_url:
         print(f"--- Fin du processus : succès. URL : {public_url} ---")
     else:
         print("--- Fin du processus : échec de l'upload ---")
-
     return public_url
 
 # --- Script de Test ---
-
 if __name__ == "__main__":
-    # --- Configuration ---
-    GCS_BUCKET_NAME = "images-oryjin"
-    CREDENTIALS_PATH = "config_gcloud.json" # Assurez-vous que le fichier est au bon endroit
     TEST_PROMPT = "Un logo abstrait pour une startup tech, style néon sur fond sombre."
-    
-    # --- Vérification des credentials ---
-    if not os.path.exists(CREDENTIALS_PATH):
-        print(f"ERREUR : Le fichier de clé '{CREDENTIALS_PATH}' est introuvable.")
-        print("Veuillez le placer à côté de ce script ou mettre à jour le chemin.")
-    else:
-        # --- Exécution avec la nouvelle fonction --- 
-        final_url = generate_and_upload_image(
-            prompt=TEST_PROMPT,
-            bucket_name=GCS_BUCKET_NAME,
-            credentials_path=CREDENTIALS_PATH,
-            folder="tests" # On met les images de test dans un dossier 'tests'
-        )
-        
-        if final_url:
-            print(f"\nTest réussi ! L'image est disponible à l'URL suivante : {final_url}")
+    # --- GCS ---
+    GCS_BUCKET_NAME = "images-oryjin"
+    GCS_CREDENTIALS_PATH = "config_gcloud.json"
+    # --- Azure ---
+    AZURE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=oryjindemo;AccountKey=***AZURE_KEY_REMOVED***;EndpointSuffix=core.windows.net"
+    AZURE_CONTAINER_NAME = "images"  # À adapter
+
+    # Test GCS
+    # if os.path.exists(GCS_CREDENTIALS_PATH):
+    #     uploader = GCSUploader(GCS_BUCKET_NAME, GCS_CREDENTIALS_PATH)
+    #     url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
+    #     if url:
+    #         print(f"\nTest GCS réussi ! L'image est disponible à l'URL suivante : {url}")
+    #     else:
+    #         print("\nLe test GCS a échoué. Veuillez vérifier les logs ci-dessus.")
+    # else:
+    #     print(f"ERREUR : Le fichier de clé '{GCS_CREDENTIALS_PATH}' est introuvable pour GCS.")
+
+    # Test Azure
+    try:
+        uploader = AzureBlobUploader(AZURE_CONNECTION_STRING, AZURE_CONTAINER_NAME)
+        url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
+        if url:
+            print(f"\nTest Azure réussi ! L'image est disponible à l'URL suivante : {url}")
         else:
-            print("\nLe test a échoué. Veuillez vérifier les logs ci-dessus.")
+            print("\nLe test Azure a échoué. Veuillez vérifier les logs ci-dessus.")
+    except Exception as e:
+        print(f"ERREUR lors de l'initialisation Azure : {e}")

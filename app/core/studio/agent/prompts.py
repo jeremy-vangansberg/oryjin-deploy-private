@@ -1,33 +1,60 @@
+from langchain_core.messages import AIMessage
+
 objectives_instructions = """
-Analyse ce brief de campagne marketing et extrais les informations clés selon la structure demandée.
+Tu es un assistant expert chargé d'extraire les objectifs d'une campagne marketing à partir d'un brief client.
 
-LOGIQUE D'EXTRACTION DES OBJECTIFS :
-• "Acquisition" si le brief mentionne : recruter, nouveaux clients, élargir cible, leads, prospects, acquisition
-• "Notoriété" si le brief mentionne : faire connaître, visibilité, awareness, image de marque, branding
-• "vente" si le brief mentionne : ventes directes, chiffre d'affaires, conversions, ROI, performance
+Ta mission :
+- Extrais les informations clés selon la structure suivante :
+  - objectives : l'objectif principal de la campagne ("Notoriété", "Acquisition", "vente")
+  - media : le canal digital principal ("Display", "Social", "Vidéo")
+  - context :
+      - end_target : la cible démographique
+      - business_context : le contexte commercial
+      - product_context : le contexte produit
 
-LOGIQUE D'EXTRACTION DES MÉDIAS :
-• "Display" si mention de : bannières, programmatique, Google Ads Display, DSP, retargeting, display
-• "Social" si mention de : Facebook, Instagram, LinkedIn, TikTok, réseaux sociaux, social media
-• "Vidéo" si mention de : YouTube, vidéo display, campagnes vidéo, pre-roll, video ads
+RÈGLES STRICTES :
+- COMBINE toutes les informations mentionnées dans TOUS les messages de la conversation.
+- Si une information apparaît dans un message précédent, GARDE-LA même si elle n'est pas répétée dans le dernier message.
+- Utilise UNIQUEMENT les informations explicitement mentionnées dans l'ensemble des messages.
+- Si une information n'est PAS clairement donnée dans AUCUN message, mets la valeur null (None en Python) pour ce champ.
+- N'invente JAMAIS de valeur, même si cela te semble probable ou logique.
+- Si le brief est incomplet, la sortie doit contenir des champs à null.
+- Respecte strictement le format demandé (clé/valeur, pas de texte libre).
+- Les valeurs possibles pour objectives : "Notoriété", "Acquisition", "vente". Pour media : "Display", "Social", "Vidéo". Mets null si aucune correspondance.
+- Pour end_target, accepte toute mention de cible démographique (CSP, âge, genre, etc.) même si c'est abrégé.
 
-LOGIQUE D'EXTRACTION DU CONTEXTE :
-• end_target : Extraire la cible précise mentionnée (CSP+, CSP, âge, etc.) + noter si élargissement
-• business_context : Secteur + positionnement + canaux de vente + type d'entreprise
-• product_context : Type produit + gamme prix + statut (nouveau/existant) + spécificités
+IMPORTANT : Tu reçois plusieurs messages dans la conversation. Tu dois COMBINER toutes les informations de tous les messages pour créer une extraction complète et cohérente.
 
-EXEMPLES DE MAPPING :
-"recruter nouveaux clients CSP avec du display" → Acquisition + Display + cible CSP
-"faire connaître notre marque sur Instagram" → Notoriété + Social + branding
-"booster les ventes via campagne YouTube" → vente + Vidéo + performance
+EXEMPLES DE RÉPONSE :
 
-RÈGLES :
-- Utilise uniquement les informations explicitement mentionnées dans le brief
-- Sois précis et factuel, n'invente pas d'informations
-- Si une information est ambiguë, choisis l'interprétation la plus probable
-- Priorise les termes exacts utilisés par le client
+Pour une conversation avec plusieurs messages :
+Message 1: "test, CSP +"
+Message 2: "vidéo"
+Message 3: "notoriété"
 
-Analyse maintenant le brief suivant :
+Tu dois COMBINER toutes les informations :
+{
+  "objectives": "Notoriété",
+  "media": "Vidéo",
+  "context": {
+    "end_target": "CSP",
+    "business_context": null,
+    "product_context": null
+  }
+}
+
+Pour un seul message incomplet :
+{
+  "objectives": null,
+  "media": "Social",
+  "context": {
+    "end_target": null,
+    "business_context": "marque de vêtements",
+    "product_context": null
+  }
+}
+
+Voici le brief à analyser :
 """
 
 
@@ -91,3 +118,42 @@ Je veux créer un visuel de type photographie réaliste représentant un client 
 Réalise un visuel de ce type représentant : un jeune couple la trentaine, avec un jeune enfant de 2 ans, de revenue modeste, pris en photo devant leur petit pavillon en zone périurbaine. 
 La photo est prise en fin d'après-midi. 
 On devine un voisinage avec des maisons de même style """
+
+
+def get_missing_fields(obj):
+    """Retourne la liste des champs (y compris imbriqués) à None ou vides dans un objet Pydantic."""
+    missing = []
+    print(f"DEBUG - get_missing_fields - Checking object: {obj}")
+    for field in obj.model_fields:
+        value = getattr(obj, field, None)
+        print(f"DEBUG - get_missing_fields - Field {field}: {value} (type: {type(value)})")
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            missing.append(field)
+            print(f"DEBUG - get_missing_fields - Field {field} is missing")
+        elif hasattr(value, 'model_fields'):
+            sub_missing = get_missing_fields(value)
+            missing.extend([f"{field}.{sub}" for sub in sub_missing])
+    print(f"DEBUG - get_missing_fields - Final missing fields: {missing}")
+    return missing
+
+
+def clarification_loop(extractor, messages, schema_class, ask_user_fn, max_retries=3):
+    """
+    Boucle d'extraction structurée avec clarification utilisateur pour les champs manquants.
+    - extractor : le structured_llm (ex: create_extractor(...))
+    - messages : historique des messages (list)
+    - schema_class : la classe Pydantic du schéma attendu
+    - ask_user_fn : fonction qui pose une question à l'utilisateur et retourne un HumanMessage
+    - max_retries : nombre max de tentatives
+    """
+    for _ in range(max_retries):
+        result = extractor.invoke(messages)
+        data = schema_class(**result['responses'][0].model_dump())
+        missing = get_missing_fields(data)
+        if not missing:
+            return data, messages
+        clarification = f"Merci de préciser les informations suivantes : {', '.join(missing)}"
+        messages.append(AIMessage(content=clarification))  # Affiche la clarification comme un message AI
+        user_reply = ask_user_fn(clarification)
+        messages.append(user_reply)
+    raise ValueError("Impossible d'extraire toutes les informations après plusieurs tentatives.")

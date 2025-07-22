@@ -131,34 +131,4 @@ def generate_and_upload_image(prompt, uploader, folder="personas"):
         print("--- Fin du processus : échec de l'upload ---")
     return public_url
 
-# --- Script de Test ---
-if __name__ == "__main__":
-    TEST_PROMPT = "Un logo abstrait pour une startup tech, style néon sur fond sombre."
-    # --- GCS ---
-    GCS_BUCKET_NAME = "images-oryjin"
-    GCS_CREDENTIALS_PATH = "config_gcloud.json"
-    # --- Azure ---
-    AZURE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=oryjindemo;AccountKey=***AZURE_KEY_REMOVED***;EndpointSuffix=core.windows.net"
-    AZURE_CONTAINER_NAME = "images"  # À adapter
 
-    # Test GCS
-    # if os.path.exists(GCS_CREDENTIALS_PATH):
-    #     uploader = GCSUploader(GCS_BUCKET_NAME, GCS_CREDENTIALS_PATH)
-    #     url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
-    #     if url:
-    #         print(f"\nTest GCS réussi ! L'image est disponible à l'URL suivante : {url}")
-    #     else:
-    #         print("\nLe test GCS a échoué. Veuillez vérifier les logs ci-dessus.")
-    # else:
-    #     print(f"ERREUR : Le fichier de clé '{GCS_CREDENTIALS_PATH}' est introuvable pour GCS.")
-
-    # Test Azure
-    try:
-        uploader = AzureBlobUploader(AZURE_CONNECTION_STRING, AZURE_CONTAINER_NAME)
-        url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
-        if url:
-            print(f"\nTest Azure réussi ! L'image est disponible à l'URL suivante : {url}")
-        else:
-            print("\nLe test Azure a échoué. Veuillez vérifier les logs ci-dessus.")
-    except Exception as e:
-        print(f"ERREUR lors de l'initialisation Azure : {e}")

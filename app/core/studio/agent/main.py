@@ -9,6 +9,7 @@ The agent's flow is structured as a state machine, where each step (node) perfor
 task, such as collecting data, running clustering, or interacting with an LLM to generate content.
 """
 from dotenv import load_dotenv
+import os
 from agent.image import generate_and_upload_image
 from IPython.display import Image, display
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
@@ -352,8 +353,9 @@ def generate_visual_persona(state: MyState):
     
     # Créer l'uploader Azure (vous pouvez changer pour GCS si nécessaire)
     from agent.image import AzureBlobUploader
-    AZURE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=oryjindemo;AccountKey=***AZURE_KEY_REMOVED***;EndpointSuffix=core.windows.net"
-    AZURE_CONTAINER_NAME = "images"
+
+    AZURE_CONNECTION_STRING = os.getenv("AZURE_CONNECTION_STRING")
+    AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
     
     uploader = AzureBlobUploader(AZURE_CONNECTION_STRING, AZURE_CONTAINER_NAME)
     image_url = generate_and_upload_image(visual_persona_prompt, uploader, folder="personas")

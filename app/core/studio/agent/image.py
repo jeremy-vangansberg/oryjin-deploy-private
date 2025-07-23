@@ -3,7 +3,6 @@ import base64
 import uuid
 from openai import OpenAI
 from dotenv import load_dotenv
-from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 from datetime import datetime, timedelta
 
 # Import optionnels selon le backend utilisé
@@ -12,10 +11,12 @@ try:
 except ImportError:
     storage = None
 try:
-    from azure.storage.blob import BlobServiceClient, ContentSettings
+    from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
 except ImportError:
     BlobServiceClient = None
     ContentSettings = None
+    generate_blob_sas = None
+    BlobSasPermissions = None
 
 # Charger les variables d'environnement (ex: OPENAI_API_KEY)
 load_dotenv()
@@ -84,16 +85,21 @@ class AzureBlobUploader(StorageUploader):
                 overwrite=True,
                 content_settings=ContentSettings(content_type='image/png')
             )
-            # Générer un SAS token valable 1h
-            sas_token = generate_blob_sas(
-                account_name=self.service_client.account_name,
-                container_name=self.container_name,
-                blob_name=destination_blob_name,
-                account_key=self.service_client.credential.account_key,
-                permission=BlobSasPermissions(read=True),
-                expiry=datetime.utcnow() + timedelta(hours=1)
-            )
-            public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}?{sas_token}"
+            # Générer un SAS token valable 1h (si disponible)
+            if generate_blob_sas is not None and BlobSasPermissions is not None:
+                sas_token = generate_blob_sas(
+                    account_name=self.service_client.account_name,
+                    container_name=self.container_name,
+                    blob_name=destination_blob_name,
+                    account_key=self.service_client.credential.account_key,
+                    permission=BlobSasPermissions(read=True),
+                    expiry=datetime.utcnow() + timedelta(hours=1)
+                )
+                public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}?{sas_token}"
+            else:
+                # URL sans SAS token (accès public requis)
+                public_url = f"https://{self.service_client.account_name}.blob.core.windows.net/{self.container_name}/{destination_blob_name}"
+                print("Attention: SAS token non disponible, utilisation d'une URL publique")
             print("Upload réussi !")
             return public_url
         except Exception as e:
@@ -131,34 +137,3 @@ def generate_and_upload_image(prompt, uploader, folder="personas"):
         print("--- Fin du processus : échec de l'upload ---")
     return public_url
 
-# --- Script de Test ---
-if __name__ == "__main__":
-    TEST_PROMPT = "Un logo abstrait pour une startup tech, style néon sur fond sombre."
-    # --- GCS ---
-    GCS_BUCKET_NAME = "images-oryjin"
-    GCS_CREDENTIALS_PATH = "config_gcloud.json"
-    # --- Azure ---
-    AZURE_CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=oryjindemo;***REMOVED***;EndpointSuffix=core.windows.net"
-    AZURE_CONTAINER_NAME = "images"  # À adapter
-
-    # Test GCS
-    # if os.path.exists(GCS_CREDENTIALS_PATH):
-    #     uploader = GCSUploader(GCS_BUCKET_NAME, GCS_CREDENTIALS_PATH)
-    #     url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
-    #     if url:
-    #         print(f"\nTest GCS réussi ! L'image est disponible à l'URL suivante : {url}")
-    #     else:
-    #         print("\nLe test GCS a échoué. Veuillez vérifier les logs ci-dessus.")
-    # else:
-    #     print(f"ERREUR : Le fichier de clé '{GCS_CREDENTIALS_PATH}' est introuvable pour GCS.")
-
-    # Test Azure
-    try:
-        uploader = AzureBlobUploader(AZURE_CONNECTION_STRING, AZURE_CONTAINER_NAME)
-        url = generate_and_upload_image(TEST_PROMPT, uploader, folder="tests")
-        if url:
-            print(f"\nTest Azure réussi ! L'image est disponible à l'URL suivante : {url}")
-        else:
-            print("\nLe test Azure a échoué. Veuillez vérifier les logs ci-dessus.")
-    except Exception as e:
-        print(f"ERREUR lors de l'initialisation Azure : {e}")

@@ -93,5 +93,11 @@ class MyState(MessagesState):
     stats_persona_summary : str = None # summary of personas stats
     image_url : str = None
     final_summary : str = None
-    user_feedback : str = None # feedback utilisateur pour clarification
-    valid : bool = None # validation des objectifs
+    objectives_complete : bool = None # indique si les objectifs sont complets
+    
+    # Champs pour gestion stateless des interruptions
+    needs_clarification : bool = None # indique si clarification nécessaire
+    missing_fields : list[str] = None # champs manquants pour clarification
+    awaiting_segment_selection : bool = None # indique si sélection en attente
+    available_segments : int = None # nombre de segments disponibles
+    segment_selection_valid : bool = None # indique si la sélection de segment est valide

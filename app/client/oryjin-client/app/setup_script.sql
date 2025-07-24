@@ -14,11 +14,7 @@ CREATE OR REPLACE NETWORK RULE langgraph_api_network_rule
 -- 2. Secret pour l'API key LangGraph  
 CREATE OR REPLACE SECRET langgraph_api_secret
   TYPE = GENERIC_STRING
-<<<<<<< HEAD
   SECRET_STRING = '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';
-=======
-  SECRET_STRING = '***REMOVED***';
->>>>>>> 721f07df31ba0d8b19d36c039cc971619d0ea222
 
 -- 3. Intégration d'accès externe
 CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION langgraph_external_access_integration

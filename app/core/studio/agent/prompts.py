@@ -1,60 +1,25 @@
 from langchain_core.messages import AIMessage
 
 objectives_instructions = """
-Tu es un assistant expert chargé d'extraire les objectifs d'une campagne marketing à partir d'un brief client.
+Tu es un extracteur de données marketing. 
 
-Ta mission :
-- Extrais les informations clés selon la structure suivante :
-  - objectives : l'objectif principal de la campagne ("Notoriété", "Acquisition", "vente")
-  - media : le canal digital principal ("Display", "Social", "Vidéo")
-  - context :
-      - end_target : la cible démographique
-      - business_context : le contexte commercial
-      - product_context : le contexte produit
+MISSION : Extraire les informations d'une campagne marketing depuis une conversation client.
 
-RÈGLES STRICTES :
-- COMBINE toutes les informations mentionnées dans TOUS les messages de la conversation.
-- Si une information apparaît dans un message précédent, GARDE-LA même si elle n'est pas répétée dans le dernier message.
-- Utilise UNIQUEMENT les informations explicitement mentionnées dans l'ensemble des messages.
-- Si une information n'est PAS clairement donnée dans AUCUN message, mets la valeur null (None en Python) pour ce champ.
-- N'invente JAMAIS de valeur, même si cela te semble probable ou logique.
-- Si le brief est incomplet, la sortie doit contenir des champs à null.
-- Respecte strictement le format demandé (clé/valeur, pas de texte libre).
-- Les valeurs possibles pour objectives : "Notoriété", "Acquisition", "vente". Pour media : "Display", "Social", "Vidéo". Mets null si aucune correspondance.
-- Pour end_target, accepte toute mention de cible démographique (CSP, âge, genre, etc.) même si c'est abrégé.
+STRUCTURE DE SORTIE :
+- objectives : "Notoriété" | "Acquisition" | "vente" | null
+- media : "Display" | "Social" | "Vidéo" | null  
+- context.end_target : cible démographique mentionnée | null
+- context.business_context : contexte commercial mentionné | null
+- context.product_context : contexte produit mentionné 
 
-IMPORTANT : Tu reçois plusieurs messages dans la conversation. Tu dois COMBINER toutes les informations de tous les messages pour créer une extraction complète et cohérente.
+RÈGLES :
+1. Utilise SEULEMENT les informations explicitement mentionnées  
+2. Si information absente = null
+3. Combine TOUS les messages de la conversation
+4. N'invente rien, n'assume rien
+5. Respecte EXACTEMENT les valeurs autorisées pour objectives/media
 
-EXEMPLES DE RÉPONSE :
-
-Pour une conversation avec plusieurs messages :
-Message 1: "test, CSP +"
-Message 2: "vidéo"
-Message 3: "notoriété"
-
-Tu dois COMBINER toutes les informations :
-{
-  "objectives": "Notoriété",
-  "media": "Vidéo",
-  "context": {
-    "end_target": "CSP",
-    "business_context": null,
-    "product_context": null
-  }
-}
-
-Pour un seul message incomplet :
-{
-  "objectives": null,
-  "media": "Social",
-  "context": {
-    "end_target": null,
-    "business_context": "marque de vêtements",
-    "product_context": null
-  }
-}
-
-Voici le brief à analyser :
+ANALYSE : Conversation client suivante...
 """
 
 
@@ -148,7 +113,18 @@ def clarification_loop(extractor, messages, schema_class, ask_user_fn, max_retri
     """
     for _ in range(max_retries):
         result = extractor.invoke(messages)
-        data = schema_class(**result['responses'][0].model_dump())
+        
+        # Gestion robuste des réponses vides ou manquantes
+        try:
+            if result.get('responses') and len(result['responses']) > 0:
+                data = schema_class(**result['responses'][0].model_dump())
+            else:
+                # Créer un objet vide si aucune extraction n'est possible
+                data = schema_class()
+        except (IndexError, KeyError, ValueError):
+            # Fallback : créer un objet vide
+            data = schema_class()
+            
         missing = get_missing_fields(data)
         if not missing:
             return data, messages

@@ -421,7 +421,7 @@ def check_segment_need_input(state: MyState):
     else:
         # Pas de segment ou segment invalide → attendre input utilisateur
         print("DEBUG - Besoin d'input utilisateur pour le segment")
-        return "await segment selection"
+        return "await_segment_selection"
 
 def generate_visual_persona(state: MyState):
     """Génère et upload l'image du persona sélectionné"""
@@ -468,7 +468,7 @@ dsp.add_node("collect data", collect_data)
 dsp.add_node("enrich data", enrich_data)  
 dsp.add_node("perform clustering", perform_clustering)
 dsp.add_node("generate textual personas", generate_textual_personas)
-dsp.add_node("await segment selection", await_segment_selection)
+dsp.add_node("await_segment_selection", await_segment_selection)
 dsp.add_node("validate segment selection", validate_segment_selection)
 dsp.add_node("generate visual persona", generate_visual_persona)
 
@@ -483,8 +483,8 @@ dsp.add_edge("enrich data", "perform clustering")
 dsp.add_edge("perform clustering", "generate textual personas")
 dsp.add_edge("generate textual personas", "validate segment selection")
 dsp.add_conditional_edges("validate segment selection", check_segment_need_input,
-                         ["generate visual persona", "await segment selection"])
-dsp.add_edge("await segment selection", "validate segment selection")  # Après attente → revalidation
+                         ["generate visual persona", "await_segment_selection"])
+dsp.add_edge("await_segment_selection", "validate segment selection")  # Après attente → revalidation
 dsp.add_edge("generate visual persona", END)
 
 # Compilation STATELESS - Les interruptions sont gérées par l'orchestrateur/API

@@ -29,6 +29,7 @@ dependencies = [
 dev = [
     "ipykernel>=6.29.5",
     "langgraph-cli[inmem]>=0.3.3",
+    "langgraph-sdk>=0.1.74",
 ]
 
 [tool.uv.workspace]

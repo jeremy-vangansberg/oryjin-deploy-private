@@ -18,6 +18,7 @@ RÈGLES :
 3. Combine TOUS les messages de la conversation
 4. N'invente rien, n'assume rien
 5. Respecte EXACTEMENT les valeurs autorisées pour objectives/media
+6. Extrait les informations en français
 
 ANALYSE : Conversation client suivante...
 """

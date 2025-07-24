@@ -2500,6 +2500,7 @@ dependencies = [
 dev = [
     { name = "ipykernel" },
     { name = "langgraph-cli", extra = ["inmem"] },
+    { name = "langgraph-sdk" },
 ]
 
 [package.metadata]
@@ -2528,6 +2529,7 @@ requires-dist = [
 dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.3.3" },
+    { name = "langgraph-sdk", specifier = ">=0.1.74" },
 ]
 
 [[package]]

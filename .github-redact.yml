@@ -1,0 +1,3 @@
+regex:
+  - find: '(?i)(DefaultEndpointsProtocol|BlobEndpoint)=[^;]*;AccountName=[^;]*;AccountKey=[A-Za-z0-9+/=]{40,}[^\n\r]*'
+    replace: 'REDACTED_AZURE_STORAGE_CONNECTION_STRING'

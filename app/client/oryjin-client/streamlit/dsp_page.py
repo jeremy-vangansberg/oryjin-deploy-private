@@ -166,8 +166,89 @@ def run_async_in_streamlit(coro, loop):
     return loop.run_until_complete(coro)
 
 def main():
+    # Configuration de la page
+    st.set_page_config(
+        page_title="Assistant Marketing Oryjin",
+        page_icon="🤖",
+        layout="centered",
+        initial_sidebar_state="collapsed"
+    )
+    
     st.title("🤖 Assistant Marketing Oryjin")
-    st.markdown("Interface de chat avec l'assistant marketing")
+    st.markdown("""
+    <div style='text-align: center; margin-bottom: 30px;'>
+        <p style='font-size: 1.2em; color: #6c757d; font-style: italic;'>
+            Votre assistant IA pour créer des campagnes marketing personnalisées
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Ajouter du CSS pour le scroll automatique et améliorer l'UI
+    st.markdown("""
+    <style>
+    .stApp > div:first-child {
+        overflow-x: hidden;
+    }
+    .main .block-container {
+        padding-bottom: 2rem;
+    }
+    /* Scroll automatique vers le bas */
+    .element-container:last-child {
+        animation: scrollToBottom 0.3s ease-out;
+    }
+    @keyframes scrollToBottom {
+        from { opacity: 0.7; }
+        to { opacity: 1; }
+    }
+    /* Style pour les messages importants */
+    .important-message {
+        border: 2px solid #ff6b6b;
+        border-radius: 10px;
+        padding: 15px;
+        background-color: #fff5f5;
+        margin: 10px 0;
+    }
+    
+
+    
+    /* Amélioration du design général */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .main > div {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        margin: 20px;
+        padding: 20px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Style amélioré pour les messages de chat */
+    .stChatMessage {
+        border-radius: 15px;
+        margin: 10px 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    /* Style pour le titre */
+    h1 {
+        text-align: center;
+        color: #2c3e50;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    </style>
+    <script>
+    // Fonction pour scroll automatique vers le bas
+    function scrollToBottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+    // Exécuter après un court délai pour laisser le temps au contenu de se charger
+    setTimeout(scrollToBottom, 100);
+    </script>
+    """, unsafe_allow_html=True)
     
     # Initialiser l'event loop (workaround GitHub issue #8488)
     if not st.session_state.get("event_loop"):
@@ -181,6 +262,8 @@ def main():
         st.session_state.state_tracker = None
         st.session_state.conversation_ended = False
         st.session_state.conversation_started = False
+    
+
 
     # Si la conversation n'a pas encore commencé
     if not st.session_state.conversation_started:
@@ -198,7 +281,7 @@ def main():
             with st.chat_message("assistant"):
                 response_placeholder = st.empty()
                 
-                with st.spinner("Traitement en cours..."):
+                with st.spinner("🔄 L'assistant analyse votre demande..."):
                     try:
                         # Obtenir le client
                         client = get_langgraph_client()
@@ -214,7 +297,7 @@ def main():
                             ),
                             st.session_state["event_loop"]
                         )
-                        
+                    
                         st.session_state.thread_id = thread_id
                         st.session_state.state_tracker = state_tracker
                         st.session_state.conversation_started = True
@@ -254,41 +337,80 @@ def main():
                 with st.chat_message("assistant"):
                     response_placeholder = st.empty()
                     
-                    try:
-                        # Envoyer le message et récupérer la réponse avec streaming
-                        response_messages, updated_tracker, full_response = run_async_in_streamlit(
-                            send_message_streaming(
-                                st.session_state.client,
-                                st.session_state.thread_id,
-                                prompt,
-                                st.session_state.state_tracker,
-                                st.session_state["event_loop"],
-                                response_placeholder
-                            ),
-                            st.session_state["event_loop"]
-                        )
+                    with st.spinner("🔄 L'assistant prépare sa réponse..."):
+                        try:
+                            # Envoyer le message et récupérer la réponse avec streaming
+                            response_messages, updated_tracker, full_response = run_async_in_streamlit(
+                                send_message_streaming(
+                                    st.session_state.client,
+                                    st.session_state.thread_id,
+                                    prompt,
+                                    st.session_state.state_tracker,
+                                    st.session_state["event_loop"],
+                                    response_placeholder
+                                ),
+                                st.session_state["event_loop"]
+                            )
                         
-                        # Mettre à jour the state tracker
-                        st.session_state.state_tracker = updated_tracker
-                        
-                        # Ajouter la réponse complète à l'historique
-                        if full_response.strip():
-                            st.session_state.messages.append({"role": "assistant", "content": full_response.strip()})
-                        
-                        # Vérifier si la conversation doit se terminer
-                        if not st.session_state.state_tracker.continue_the_loop:
-                            st.session_state.conversation_ended = True
-                            st.success("✅ Conversation terminée !")
-                        
-                        # Relancer pour continuer le flux
-                        st.rerun()
+                            # Mettre à jour the state tracker
+                            st.session_state.state_tracker = updated_tracker
                             
-                    except Exception as e:
-                        st.error(f"Erreur lors de l'envoi du message: {e}")
+                            # Ajouter la réponse complète à l'historique
+                            if full_response.strip():
+                                st.session_state.messages.append({"role": "assistant", "content": full_response.strip()})
+                            
+                            # Vérifier si la conversation doit se terminer
+                            if not st.session_state.state_tracker.continue_the_loop:
+                                st.session_state.conversation_ended = True
+                                st.success("✅ Conversation terminée !")
+                            
+                            # Relancer pour continuer le flux
+                            st.rerun()
+                                
+                        except Exception as e:
+                            st.error(f"Erreur lors de l'envoi du message: {e}")
         
         elif st.session_state.conversation_ended:
-            st.info("🎉 La conversation s'est terminée avec succès !")
-            if st.button("Nouvelle conversation"):
+            st.success("🎉 La conversation s'est terminée avec succès !")
+            
+            # Chercher et mettre en évidence l'URL de l'image dans le dernier message
+            if st.session_state.messages:
+                last_message = st.session_state.messages[-1]
+                if "Image générée :" in last_message.get("content", ""):
+                    # Extraire l'URL de l'image
+                    import re
+                    url_match = re.search(r'https://[^\s]+', last_message["content"])
+                    if url_match:
+                        image_url = url_match.group()
+                        st.markdown(f"""
+                        <div class="important-message">
+                            <h3>🎨 Votre persona visuel est prêt !</h3>
+                            <div style="text-align: center; margin: 20px 0;">
+                                <a href="{image_url}" target="_blank" 
+                                   style="display: inline-block; padding: 12px 24px; 
+                                          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                          color: white; text-decoration: none; border-radius: 25px; 
+                                          font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                                          transition: transform 0.2s ease;">
+                                    🖼️ Voir mon persona visuel
+                                </a>
+                            </div>
+                            <p style="font-size: 0.9em; color: #666; text-align: center;">
+                                <strong>URL :</strong> <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 4px;">{image_url}</code>
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            # Scroll automatique vers le bas pour s'assurer que l'URL est visible
+            st.markdown("""
+            <script>
+            setTimeout(function() {
+                window.scrollTo(0, document.body.scrollHeight);
+            }, 500);
+            </script>
+            """, unsafe_allow_html=True)
+            
+            if st.button("🔄 Nouvelle conversation"):
                 # Réinitialiser pour une nouvelle conversation
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]

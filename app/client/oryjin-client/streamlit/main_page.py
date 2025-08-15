@@ -1,5 +1,5 @@
 import streamlit as st
 
-st.title("Main Page")
+st.title("Oryjin")
 
-st.write("This is the main page")
+st.write("Bienvenue sur Oryjin, l'assistant marketing qui vous aide à créer des campagnes marketing efficaces et rentables.")

@@ -165,6 +165,53 @@ def run_async_in_streamlit(coro, loop):
     """Exécute une coroutine dans l'event loop de Streamlit"""
     return loop.run_until_complete(coro)
 
+def check_authentication():
+    """Vérifie l'authentification de l'utilisateur"""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        st.title("🔐 Accès Sécurisé")
+        st.markdown("""
+        <div style='text-align: center; margin-bottom: 30px;'>
+            <p style='font-size: 1.2em; color: #6c757d;'>
+                Veuillez entrer le code d'accès pour utiliser l'assistant marketing
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Formulaire d'authentification
+        with st.form("auth_form"):
+            access_code = st.text_input(
+                "Code d'accès", 
+                type="password",
+                placeholder="Entrez votre code d'accès"
+            )
+            submit_button = st.form_submit_button("🚀 Accéder à l'assistant")
+            
+            if submit_button:
+                # TODO: Remplacer par le code souhaité par l'utilisateur
+                correct_code = "ORYJIN2025"  # Code temporaire
+                
+                if access_code == correct_code:
+                    st.session_state.authenticated = True
+                    st.success("✅ Authentification réussie ! Redirection en cours...")
+                    st.rerun()
+                else:
+                    st.error("❌ Code d'accès incorrect. Veuillez réessayer.")
+        
+        # Informations de contact (optionnel)
+        st.markdown("---")
+        st.markdown("""
+        <div style='text-align: center; color: #888; font-size: 0.9em;'>
+            <p>Besoin d'aide ? Contactez l'administrateur pour obtenir votre code d'accès.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        return False
+    
+    return True
+
 def main():
     # Configuration de la page
     st.set_page_config(
@@ -173,6 +220,12 @@ def main():
         layout="centered",
         initial_sidebar_state="collapsed"
     )
+    
+    # Vérifier l'authentification avant d'afficher le contenu
+    if not check_authentication():
+        return
+    
+    # Interface principale (accessible uniquement après authentification)
     
     st.title("🤖 Assistant Marketing Oryjin")
     st.markdown("""
@@ -416,8 +469,19 @@ def main():
                     del st.session_state[key]
                 st.rerun()
     
-    # Sidebar avec informations de debug
+    # Sidebar avec informations de debug et déconnexion
     with st.sidebar:
+        st.header("👤 Session")
+        st.success("✅ Connecté")
+        
+        if st.button("🚪 Se déconnecter", type="secondary"):
+            # Réinitialiser complètement la session
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+        
+        st.markdown("---")
+        
         st.header("🔧 Debug Info")
         if st.session_state.conversation_started:
             st.write(f"**Thread ID:** {st.session_state.thread_id}")
@@ -428,8 +492,11 @@ def main():
         else:
             st.write("*Conversation non démarrée*")
         
-        if st.button("🔄 Réinitialiser"):
-            for key in list(st.session_state.keys()):
+        if st.button("🔄 Réinitialiser conversation"):
+            # Réinitialiser seulement la conversation, pas l'authentification
+            keys_to_keep = ["authenticated"]
+            keys_to_remove = [key for key in st.session_state.keys() if key not in keys_to_keep]
+            for key in keys_to_remove:
                 del st.session_state[key]
             st.rerun()
 

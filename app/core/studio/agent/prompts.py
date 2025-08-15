@@ -69,21 +69,23 @@ Votre réponse finale doit être UNIQUEMENT cet objet JSON.
 persona_informations = 'placeholder'
 
 viz_persona = """
-En utilisant les informations sur le segments suivants :
+En utilisant les informations sur le segment suivant :
 {}
 
-Crée un prompt qui permet d'avoir une incarnation du persona afin de faire une représentation visuelle actionnable
-pour un segment marketing. On veut que le visuel soit réaliste. Il doit représenter une personne, sa famille,
-son habitat, son CSP, etc.
+Génère UNIQUEMENT un prompt concis en anglais (maximum 150 mots) pour une IA de génération d'image (DALL-E, Midjourney, etc.).
 
-Exemple : 
+Le prompt doit décrire :
+- Une personne réaliste représentant ce segment
+- Son apparence physique et vestimentaire
+- Son environnement familial/social
+- Son habitat/contexte de vie
+- Style photographique réaliste
 
-Agit en tant que graphiste. 
-Je suis un consultant marketing spécialisé dans l'analyse des consommateurs. 
-Je veux créer un visuel de type photographie réaliste représentant un client type. 
-Réalise un visuel de ce type représentant : un jeune couple la trentaine, avec un jeune enfant de 2 ans, de revenue modeste, pris en photo devant leur petit pavillon en zone périurbaine. 
-La photo est prise en fin d'après-midi. 
-On devine un voisinage avec des maisons de même style """
+Format de réponse : SEULEMENT le prompt en anglais, sans explications ni commentaires supplémentaires.
+
+Exemple de format attendu :
+"Realistic photograph of a 35-year-old middle-class woman in casual business attire, standing with her family in front of their suburban home, natural lighting, documentary style, 4K quality"
+"""
 
 
 def get_missing_fields(obj):

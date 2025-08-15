@@ -11,8 +11,11 @@ def parse_messages(chunk):
     """Parse les messages des chunks reçus de l'API"""
     if chunk.event == "messages/complete":
         return chunk.data[-1].get('content')
-    else:
-        return chunk
+    elif chunk.event == "messages/partial":
+        # Traiter aussi les messages partiels pour le streaming
+        if chunk.data and len(chunk.data) > 0:
+            return chunk.data[-1].get('content', '')
+    return None
 
 class StateTracker:
     """Suit l'état de la conversation et détermine quand continuer"""
@@ -22,11 +25,13 @@ class StateTracker:
 
     def update_continue(self, chunk):
         """Met à jour si on doit continuer la boucle"""
-        if chunk.event == "messages/metadata":
-            metadata = next(iter(chunk.data.values())).get('metadata', {})
-            triggers = metadata.get('langgraph_triggers', [])
-            if 'branch:to:generate visual persona' in triggers:
-                self.continue_the_loop = False
+        # Pour l'instant, ne pas terminer automatiquement
+        # Laissons le stream se terminer naturellement
+        pass
+    
+    def set_conversation_ended(self):
+        """Marque la conversation comme terminée (appelé après la fin du stream)"""
+        self.continue_the_loop = False
 
     def update_as_node(self, chunk):
         """Met à jour le node actuel avec priorité"""
@@ -62,7 +67,7 @@ async def create_thread_and_send_initial_message_streaming(client, initial_messa
         assistant_id="dsp_assistant",
         input={"messages": [HumanMessage(content=initial_message)]},
         stream_mode="messages",
-        interrupt_before=["await_user_clarification"]
+        interrupt_before=["await_user_clarification", "await_segment_selection"]
     )
     
     messages = []
@@ -70,10 +75,27 @@ async def create_thread_and_send_initial_message_streaming(client, initial_messa
     state_tracker = StateTracker()
     
     async for chunk in stream:
+        # Debug : afficher les informations de chaque chunk
+        print(f"DEBUG - Chunk event: {chunk.event}")
+        if hasattr(chunk, 'data') and chunk.data:
+            print(f"DEBUG - Chunk data keys: {list(chunk.data.keys()) if isinstance(chunk.data, dict) else 'not dict'}")
+        
         content = parse_messages(chunk)
-        if content and isinstance(content, str):
-            messages.append(content)
-            full_response += content + "\n\n"
+        if content and isinstance(content, str) and content.strip():
+            # Pour les messages partiels, on accumule le contenu
+            if chunk.event == "messages/partial":
+                # Remplacer le dernier message s'il existe, sinon ajouter
+                if messages and len(messages) > 0:
+                    messages[-1] = content
+                else:
+                    messages.append(content)
+                # Reconstruire la réponse complète
+                full_response = "\n\n".join(messages) + "\n\n"
+            else:
+                # Message complet
+                messages.append(content)
+                full_response += content + "\n\n"
+            
             # Mise à jour en temps réel du placeholder
             placeholder.markdown(full_response)
         
@@ -104,15 +126,38 @@ async def send_message_streaming(client, thread_id, message, state_tracker, loop
     full_response = ""
     
     async for chunk in resume:
+        # Debug : afficher les informations de chaque chunk
+        print(f"DEBUG - Resume chunk event: {chunk.event}")
+        if hasattr(chunk, 'data') and chunk.data:
+            print(f"DEBUG - Resume chunk data keys: {list(chunk.data.keys()) if isinstance(chunk.data, dict) else 'not dict'}")
+        
         content = parse_messages(chunk)
-        if content and isinstance(content, str):
-            messages.append(content)
-            full_response += content + "\n\n"
+        if content and isinstance(content, str) and content.strip():
+            # Pour les messages partiels, on accumule le contenu
+            if chunk.event == "messages/partial":
+                # Remplacer le dernier message s'il existe, sinon ajouter
+                if messages and len(messages) > 0:
+                    messages[-1] = content
+                else:
+                    messages.append(content)
+                # Reconstruire la réponse complète
+                full_response = "\n\n".join(messages) + "\n\n"
+            else:
+                # Message complet
+                messages.append(content)
+                full_response += content + "\n\n"
+            
             # Mise à jour en temps réel du placeholder
             placeholder.markdown(full_response)
         
         state_tracker.update_as_node(chunk)
         state_tracker.update_continue(chunk)
+    
+    # Après la fin du stream, vérifier si on doit terminer
+    # Si aucun node d'interruption n'est actif, c'est que le graphe est terminé
+    if state_tracker.as_node is None or state_tracker.as_node not in ["await_user_clarification", "await_segment_selection"]:
+        print("DEBUG - Stream terminé sans interruption, fin de conversation")
+        state_tracker.set_conversation_ended()
     
     return messages, state_tracker, full_response
 
@@ -140,64 +185,62 @@ def main():
     # Si la conversation n'a pas encore commencé
     if not st.session_state.conversation_started:
         st.markdown("### 💡 Commencez votre conversation")
+        st.markdown("Décrivez votre projet marketing dans le chat ci-dessous...")
         
-        # Zone de saisie pour le message initial
-        initial_message = st.text_area(
-            "Décrivez votre projet marketing :",
-            placeholder="Ex: Je veux créer une campagne marketing pour...",
-            height=100
-        )
-        
-        if st.button("🚀 Démarrer la conversation", disabled=not initial_message.strip()):
-            if initial_message.strip():
-                # Afficher le message utilisateur
-                st.session_state.messages.append({"role": "user", "content": initial_message})
-                with st.chat_message("user"):
-                    st.markdown(initial_message)
+        # Chat input pour le message initial
+        if initial_message := st.chat_input("Ex: Je veux créer une campagne marketing pour..."):
+            # Afficher le message utilisateur
+            st.session_state.messages.append({"role": "user", "content": initial_message})
+            with st.chat_message("user"):
+                st.markdown(initial_message)
+            
+            # Créer un placeholder pour la réponse streaming
+            with st.chat_message("assistant"):
+                response_placeholder = st.empty()
                 
-                # Créer un placeholder pour la réponse streaming
-                with st.chat_message("assistant"):
-                    response_placeholder = st.empty()
-                    
-                    with st.spinner("Traitement en cours..."):
-                        try:
-                            # Obtenir le client
-                            client = get_langgraph_client()
-                            st.session_state.client = client
-                            
-                            # Créer le thread et envoyer le message initial avec streaming
-                            thread_id, initial_messages, state_tracker, full_response = run_async_in_streamlit(
-                                create_thread_and_send_initial_message_streaming(
-                                    client, 
-                                    initial_message, 
-                                    st.session_state["event_loop"],
-                                    response_placeholder
-                                ),
-                                st.session_state["event_loop"]
-                            )
-                            
-                            st.session_state.thread_id = thread_id
-                            st.session_state.state_tracker = state_tracker
-                            st.session_state.conversation_started = True
-                            
-                            # Ajouter la réponse complète à l'historique
-                            if full_response.strip():
-                                st.session_state.messages.append({"role": "assistant", "content": full_response.strip()})
-                            
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Erreur lors de l'initialisation: {e}")
-                            st.error("Assurez-vous que votre API LangGraph est en cours d'exécution sur http://127.0.0.1:2024")
+                with st.spinner("Traitement en cours..."):
+                    try:
+                        # Obtenir le client
+                        client = get_langgraph_client()
+                        st.session_state.client = client
+                        
+                        # Créer le thread et envoyer le message initial avec streaming
+                        thread_id, initial_messages, state_tracker, full_response = run_async_in_streamlit(
+                            create_thread_and_send_initial_message_streaming(
+                                client, 
+                                initial_message, 
+                                st.session_state["event_loop"],
+                                response_placeholder
+                            ),
+                            st.session_state["event_loop"]
+                        )
+                        
+                        st.session_state.thread_id = thread_id
+                        st.session_state.state_tracker = state_tracker
+                        st.session_state.conversation_started = True
+                        
+                        # Ajouter la réponse complète à l'historique
+                        if full_response.strip():
+                            st.session_state.messages.append({"role": "assistant", "content": full_response.strip()})
+                        
+                        # Vérifier si la conversation est terminée dès l'initialisation
+                        if not st.session_state.state_tracker.continue_the_loop:
+                            st.session_state.conversation_ended = True
+                            st.success("✅ Conversation terminée !")
+                        
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'initialisation: {e}")
+                        st.error("Assurez-vous que votre API LangGraph est en cours d'exécution sur http://127.0.0.1:2024")
     
     else:
-        # Conversation en cours
-        # Afficher l'historique des messages
+        # Conversation en cours - Afficher l'historique des messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
-        # Interface de saisie
+        # Interface de saisie - Continue tant que continue_the_loop est True
         if not st.session_state.conversation_ended and st.session_state.state_tracker.continue_the_loop:
             if prompt := st.chat_input("Votre message..."):
                 # Ajouter le message utilisateur
@@ -236,6 +279,9 @@ def main():
                         if not st.session_state.state_tracker.continue_the_loop:
                             st.session_state.conversation_ended = True
                             st.success("✅ Conversation terminée !")
+                        
+                        # Relancer pour continuer le flux
+                        st.rerun()
                             
                     except Exception as e:
                         st.error(f"Erreur lors de l'envoi du message: {e}")
